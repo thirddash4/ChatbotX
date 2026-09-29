@@ -207,13 +207,13 @@ const resolveContactFilterOptions = (
   ctx: {
     t: (key: string) => string
     channelOptions: SelectOption[]
-    inboxOptions: SelectOption[]
-    tagOptions: SelectOption[]
-    flowVersionOptions: SelectOption[]
-    broadcastOptions: SelectOption[]
-    sequenceOptions: SelectOption[]
-    reflinkOptions: SelectOption[]
-    assigneeOptions: SelectOption[]
+    inboxOptions?: SelectOption[]
+    tagOptions?: SelectOption[]
+    flowVersionOptions?: SelectOption[]
+    broadcastOptions?: SelectOption[]
+    sequenceOptions?: SelectOption[]
+    reflinkOptions?: SelectOption[]
+    assigneeOptions?: SelectOption[]
   },
 ): SelectOption[] | undefined => {
   switch (optionSource) {
@@ -400,19 +400,24 @@ export const getFieldConfigs = ({
   inboxOptions,
   customFields,
   flowVersionOptions,
-  broadcastOptions = [],
-  sequenceOptions = [],
-  reflinkOptions = [],
-  assigneeOptions = [],
+  broadcastOptions,
+  sequenceOptions,
+  reflinkOptions,
+  assigneeOptions,
   couponTopicOptions = [],
   botFields = [],
   includeBotFields = false,
 }: {
   t: (key: string) => string
-  tagOptions: SelectOption[]
-  inboxOptions: SelectOption[]
+  /**
+   * Workspace-backed option lists stay `undefined` until their source has
+   * loaded, so values aren't flagged unknown against a list that isn't there
+   * yet. An empty array means loaded with nothing in it.
+   */
+  tagOptions?: SelectOption[]
+  inboxOptions?: SelectOption[]
   customFields: CustomFieldFilterOption[]
-  flowVersionOptions: SelectOption[]
+  flowVersionOptions?: SelectOption[]
   broadcastOptions?: SelectOption[]
   sequenceOptions?: SelectOption[]
   reflinkOptions?: SelectOption[]
@@ -642,19 +647,34 @@ const findOptionLabel = (
   }
 }
 
+// Option-backed values that no longer resolve (deleted tag, removed member…)
+// read as "Unknown". Booleans keep the raw value: custom boolean fields also
+// accept `{{variable}}` values that have no matching option.
+export const getUnknownValueLabel = (
+  fieldConfig: FieldConfig | undefined,
+  t: (key: string) => string,
+): string | undefined =>
+  fieldConfig?.formField === formFieldTypes.enum.boolean
+    ? undefined
+    : t("condition.unknownValue")
+
 export const formatConditionValueDisplay = (
   value: string | string[] | undefined,
   options?: SelectOption[],
+  unknownLabel?: string,
 ): string => {
   if (value === undefined) {
     return ""
   }
-  if (!options?.length) {
+  // No option list (source not loaded yet, failed, or a free-text field):
+  // nothing to resolve against, so show the value as-is. An empty list is a
+  // loaded one, e.g. every tag deleted, and falls through to the unknown label.
+  if (!options) {
     return Array.isArray(value) ? value.join(", ") : value
   }
 
   const getLabel = (optionValue: string) =>
-    findOptionLabel(options, optionValue) ?? optionValue
+    findOptionLabel(options, optionValue) ?? unknownLabel ?? optionValue
 
   if (Array.isArray(value)) {
     return value.map(getLabel).join(", ")

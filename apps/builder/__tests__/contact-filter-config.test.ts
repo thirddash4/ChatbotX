@@ -14,6 +14,7 @@ import {
   getConditionOptions,
   getFieldConfigs,
   getFieldOptions,
+  getUnknownValueLabel,
 } from "@/features/contact-filter/components/contact-filter-config"
 import {
   customFieldOperatorRequiresArrayValue,
@@ -456,10 +457,14 @@ describe("contact filter field config helpers", () => {
     ).toEqual(booleanOptions)
 
     for (const fieldName of ["customField:cf-bool", "botField:bf-bool"]) {
-      const options = configs.find(
-        (config) => config.name === fieldName,
-      )?.options
-      expect(formatConditionValueDisplay("{{x}}", options)).toBe("{{x}}")
+      const fieldConfig = configs.find((config) => config.name === fieldName)
+      expect(
+        formatConditionValueDisplay(
+          "{{x}}",
+          fieldConfig?.options,
+          getUnknownValueLabel(fieldConfig, t),
+        ),
+      ).toBe("{{x}}")
     }
   })
 
@@ -706,5 +711,34 @@ describe("contact filter field config helpers", () => {
         ],
       ),
     ).toBe("Alice, Sales Team, Unassigned, missing")
+  })
+
+  test("shows the unknown label for option values that no longer resolve", () => {
+    const tagsConfig = getFieldConfigs({
+      t,
+      tagOptions: [{ label: "VIP", value: "tag-1" }],
+      inboxOptions: [],
+      flowVersionOptions: [],
+      customFields: [],
+    }).find((config) => config.name === "tags")
+    const unknownLabel = getUnknownValueLabel(tagsConfig, t)
+
+    expect(unknownLabel).toBe("condition.unknownValue")
+    expect(
+      formatConditionValueDisplay(
+        ["tag-1", "deleted-tag"],
+        tagsConfig?.options,
+        unknownLabel,
+      ),
+    ).toBe("VIP, condition.unknownValue")
+    // Loaded but empty (every tag deleted): the value is unknown.
+    expect(formatConditionValueDisplay("tag-1", [], unknownLabel)).toBe(
+      "condition.unknownValue",
+    )
+    // No list at all — the source hasn't loaded, failed, or the field is free
+    // text — so there is nothing to resolve against and the value stays as-is.
+    expect(formatConditionValueDisplay("titan", undefined, unknownLabel)).toBe(
+      "titan",
+    )
   })
 })
