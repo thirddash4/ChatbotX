@@ -4646,7 +4646,20 @@
   },
   "botSimulator": {
     "title": "Bottisimulaattori",
-    "description": "Simuloi bottisi toimintaa reaaliaikaisessa ympäristössä."
+    "description": "Simuloi bottisi toimintaa reaaliaikaisessa ympäristössä.",
+    "formDescription": "Hanki linkki, joka näyttää verkkosivuston webchatisi kanssa, jotta voit esitellä botin asiakkaalle.",
+    "websiteLink": "Verkkosivuston linkki",
+    "websiteLinkPlaceholder": "https://example.com",
+    "websiteLinkHint": "Verkkosivusto, joka näytetään webchatin takana. Jotkin sivustot eivät salli näyttämistä toisen sivun sisällä.",
+    "selectWebchat": "Valitse webchat",
+    "webchatRequired": "Valitse webchat",
+    "invalidUrl": "Anna koko linkki, joka alkaa http:// tai https://",
+    "getLink": "Hae linkki",
+    "linkCopied": "Linkki kopioitu leikepöydälle",
+    "copyFailed": "Linkin kopiointi epäonnistui",
+    "noWebchat": "Tässä työtilassa ei ole vielä webchatia.",
+    "createWebchat": "Luo webchat",
+    "websitePreview": "Verkkosivuston esikatselu"
   },
   "pollManager": {
     "title": "Kyselyjen hallinta",
