@@ -348,6 +348,9 @@ export async function processWhatsappTemplate(
       },
       metadata,
       messageId: newMessage.id,
+      // Any responder may send a template and it never changes thread
+      // ownership, so the conversation-routing send gate lets it through.
+      isTemplateMessage: true,
       botSentAnalytics: {
         triggerHandler: "processWhatsappTemplate",
         triggerType: "message_bot_sent_whatsapp_template",

@@ -4,6 +4,7 @@ import {
   flowStatsRequest,
 } from "@chatbotx.io/analytics"
 import { flowVersionService } from "@chatbotx.io/business"
+import { integrationWhatsappRepository } from "@chatbotx.io/database/repositories"
 import { convertStartNodeToMessengerAdsJson } from "@chatbotx.io/integration-messenger/messenger-ads"
 import { zodBigintAsString } from "@chatbotx.io/utils"
 import z from "zod"
@@ -29,6 +30,34 @@ export const privateFlowsAPI = {
       const { workspaceId, ...rest } = input
 
       return await listFlows({ ...rest, workspaceId })
+    }),
+
+  // Resolves the WhatsApp integration that owns an inbox, so the composer's
+  // "Send flow → Template" tab can scope its flow list to templates bound to
+  // this conversation's own number (a template belongs to one integration, and
+  // sending one from another number fails). Returns null for a non-WhatsApp or
+  // unconnected inbox, which the client renders as an empty tab. Read-only,
+  // scoped by workspace, so it mirrors the outbound-call-mode resolver's direct
+  // repository read.
+  privateResolveTemplateFlowIntegrationAPI: authorizedAPI
+    .route({
+      method: "GET",
+      path: "/workspaces/{workspaceId}/flows/template-integration",
+      summary: "Resolve the WhatsApp integration backing an inbox",
+      tags: ["Flows"],
+    })
+    .input(
+      withWorkspaceIdSchema.and(z.object({ inboxId: zodBigintAsString() })),
+    )
+    .use(workspaceAuthorizedMidddleware, (input) => input.workspaceId)
+    .output(z.object({ integrationWhatsappId: z.string().nullable() }))
+    .handler(async ({ input }) => {
+      const integration =
+        await integrationWhatsappRepository.findByInboxIdForWorkspace({
+          workspaceId: input.workspaceId,
+          inboxId: input.inboxId,
+        })
+      return { integrationWhatsappId: integration?.id ?? null }
     }),
 
   privateGetFlowStatsAPI: authorizedAPI

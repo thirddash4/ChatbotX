@@ -41,7 +41,10 @@ export const useInvalidateFlows = () => {
   )
 }
 
-export const useFlowSelectOptions = (options?: { enabled?: boolean }) => {
+export const useFlowSelectOptions = (options?: {
+  enabled?: boolean
+  filter?: FlowStateFilter
+}) => {
   const workspaceId = useWorkspaceId()
   const { data: flows = [] } = useFlows(workspaceId, options)
 
@@ -55,7 +58,33 @@ export const useFlowSelectOptions = (options?: { enabled?: boolean }) => {
   )
 }
 
-export const useFlowNodesSelectOptions = (options?: { enabled?: boolean }) => {
+/**
+ * Resolves the WhatsApp integration id backing a conversation's inbox, so the
+ * "Send flow → Template" tab can scope its list to that number's templates.
+ * Returns undefined until resolved or when the inbox has no WhatsApp
+ * integration (non-WhatsApp conversation), which keeps the tab empty rather
+ * than listing another number's templates.
+ */
+export const useTemplateFlowIntegrationId = (
+  inboxId: string | undefined,
+  options?: { enabled?: boolean },
+) => {
+  const workspaceId = useWorkspaceId()
+  const { data } = useQuery(
+    orpc.flowsAPI.privateResolveTemplateFlowIntegrationAPI.queryOptions({
+      input: { workspaceId: workspaceId ?? "", inboxId: inboxId ?? "" },
+      enabled: Boolean(workspaceId && inboxId) && (options?.enabled ?? true),
+      select: (res) => res.integrationWhatsappId,
+    }),
+  )
+
+  return data ?? undefined
+}
+
+export const useFlowNodesSelectOptions = (options?: {
+  enabled?: boolean
+  filter?: FlowStateFilter
+}) => {
   const workspaceId = useWorkspaceId()
   const { data: flows = [] } = useFlows(workspaceId, options)
 
