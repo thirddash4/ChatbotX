@@ -1,11 +1,16 @@
 import { spawnSync } from "node:child_process"
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs"
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { resolve } from "node:path"
 import { expect, test } from "vitest"
 
 const root = resolve(import.meta.dirname, "../../..")
 const script = resolve(root, "scripts/check-worker-deploy.mjs")
+
+test("preserves the production always-restart safety policy", () => {
+  const config = readFileSync(resolve(root, "apps/worker/railway.toml"), "utf8")
+  expect(config).toContain('restartPolicyType = "ALWAYS"')
+})
 
 test("accepts the full repository and rejects empty or worker-only uploads", () => {
   expect(spawnSync(process.execPath, [script, root]).status).toBe(0)

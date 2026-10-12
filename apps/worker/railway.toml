@@ -4,5 +4,5 @@ dockerfilePath = "apps/worker/docker/Dockerfile"
 
 [deploy]
 startCommand = ""
-restartPolicyType = "ON_FAILURE"
+restartPolicyType = "ALWAYS"
 restartPolicyMaxRetries = 10
