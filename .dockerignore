@@ -19,3 +19,8 @@ dist
 .git
 .github
 reports
+.task-evidence
+.env
+.env.*
+**/.env
+**/.env.*

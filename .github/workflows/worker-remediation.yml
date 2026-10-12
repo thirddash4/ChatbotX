@@ -1,0 +1,45 @@
+name: Worker remediation
+on:
+  pull_request:
+    branches: [baseline/worker-runtime-aec902c]
+permissions:
+  contents: read
+jobs:
+  worker:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      redis:
+        image: redis:7@sha256:c6eabf748fc7a61dbb5a705c78bcf3d6377b1127a97d0ce965c11c44ba46896f
+        ports: [6379:6379]
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s --health-timeout 3s --health-retries 10
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.19.0
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: node scripts/check-worker-deploy.mjs
+      - run: pnpm lint
+      - run: pnpm --filter worker check-types
+      - run: SKIP_ENV_CHECK=true pnpm turbo run build --filter=worker
+      - name: Worker regression and real Redis checks
+        env:
+          WORKER_TEST_REDIS_PORT: 6379
+        run: >-
+          pnpm --filter worker exec vitest run --maxWorkers=1 --no-file-parallelism
+          __tests__/docker-entrypoint.test.ts
+          __tests__/worker-lifecycle.test.ts
+          __tests__/worker-shutdown.test.ts
+          __tests__/worker-roster.test.ts
+          __tests__/worker-deploy-context.test.ts
+          __tests__/worker-runtime.test.ts
+          __tests__/enqueue-broadcast.test.ts
+          __tests__/integration-routing.test.ts
+          __tests__/integration-job-context.test.ts
+          __tests__/scan-smart-delay.test.ts
+          --coverage --coverage.include=src/lib/lifecycle.ts --coverage.include=src/lib/shutdown.ts

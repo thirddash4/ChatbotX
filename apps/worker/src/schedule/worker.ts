@@ -7,7 +7,9 @@ import {
 } from "@chatbotx.io/worker-config"
 import { type Job, Queue, Worker } from "bullmq"
 import { ensureBootstrapped } from "../lib/bootstrap"
+import { closeWorkerResources } from "../lib/lifecycle"
 import { logger } from "../lib/logger"
+import { startManagedWorker } from "../lib/shutdown"
 import {
   cleanupTriggerExecutions,
   scanDateTimeTriggers,
@@ -35,24 +37,8 @@ import { syncUserQuota } from "./handlers/sync-user-quota"
 import { teardownExpiredTrial } from "./handlers/teardown-expired-trial"
 import { unsubscribeExpiredTrials } from "./handlers/unsubscribe-expired-trials"
 
-async function startScheduleWorker() {
-  try {
-    await ensureBootstrapped()
-    logger.info("Analytics bootstrapped successfully")
-  } catch (err) {
-    logger.error(err, "Failed to bootstrap analytics")
-    process.exit(1)
-  }
-
-  if (scheduleQueue instanceof Queue) {
-    registerSchedules()
-      .then(() => {
-        logger.info("Schedules registered")
-      })
-      .catch((err) => {
-        logger.error(err, "Error registering schedules")
-      })
-  }
+startManagedWorker("schedule", async (registerClose) => {
+  await ensureBootstrapped()
 
   const worker = new Worker(
     queueNames.enum.schedule,
@@ -158,25 +144,16 @@ async function startScheduleWorker() {
     }
   })
 
-  let isShuttingDown = false
-  async function shutdown() {
-    if (isShuttingDown) {
-      return
-    }
-    isShuttingDown = true
-    try {
-      await worker.close()
-      process.exit(0)
-    } catch (err) {
-      logger.error(err, "[ScheduleWorker] Error during shutdown")
-      process.exit(1)
-    }
-  }
-  process.once("SIGINT", shutdown)
-  process.once("SIGTERM", shutdown)
-}
+  registerClose(() =>
+    closeWorkerResources(worker, async () => {
+      if (scheduleQueue instanceof Queue) {
+        await scheduleQueue.close()
+      }
+    }),
+  )
 
-startScheduleWorker().catch((err) => {
-  logger.error("Failed to start schedule worker", err)
-  process.exit(1)
+  if (scheduleQueue instanceof Queue) {
+    await registerSchedules()
+    logger.info("Schedules registered")
+  }
 })

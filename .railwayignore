@@ -1,0 +1,11 @@
+.git
+**/node_modules
+**/dist
+**/.next
+**/.turbo
+.task-evidence
+.env
+.env.*
+**/.env
+**/.env.*
+**/coverage

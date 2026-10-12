@@ -14,6 +14,7 @@ import { isBlockedWorkspace } from "../lib/is-blocked-workspace"
 import { isBotMessageQuotaReached } from "../lib/is-bot-message-quota-reached"
 import { logger } from "../lib/logger"
 import { resolveWorkspaceId } from "../lib/resolve-workspace-id"
+import { startManagedWorker } from "../lib/shutdown"
 import { sendChatMessage, sendFlowStep } from "./handlers/send-flow-step"
 import {
   changeMessageStateOnChannel,
@@ -43,14 +44,8 @@ function isBotSendJob(data: ChatJobData): boolean {
   )
 }
 
-async function startChatWorker() {
-  try {
-    await ensureBootstrapped()
-    logger.info("Chat worker bootstrapped successfully")
-  } catch (err) {
-    logger.error(err, "Failed to bootstrap chat worker")
-    process.exit(1)
-  }
+startManagedWorker("chat", async (registerClose) => {
+  await ensureBootstrapped()
 
   const worker = new Worker(
     queueNames.enum.chat,
@@ -127,22 +122,5 @@ async function startChatWorker() {
     }
   })
 
-  let isShuttingDown = false
-  async function shutdown() {
-    if (isShuttingDown) {
-      return
-    }
-    isShuttingDown = true
-    try {
-      await worker.close()
-      process.exit(0)
-    } catch (err) {
-      logger.error(err, "[ChatWorker] Error during shutdown")
-      process.exit(1)
-    }
-  }
-  process.once("SIGINT", shutdown)
-  process.once("SIGTERM", shutdown)
-}
-
-startChatWorker()
+  registerClose(() => worker.close(), "chat")
+})

@@ -14,8 +14,10 @@ import { type Job, Worker } from "bullmq"
 import { env } from "../env"
 import { ensureBootstrapped } from "../lib/bootstrap"
 import { isBlockedWorkspace } from "../lib/is-blocked-workspace"
+import { closeWorkerResources } from "../lib/lifecycle"
 import { logger } from "../lib/logger"
 import { resolveWorkspaceId } from "../lib/resolve-workspace-id"
+import { startManagedWorker } from "../lib/shutdown"
 import { processAutomatedResponse } from "./handlers/automated-response"
 import { runChallenge } from "./handlers/challenge"
 import { coexistAttachmentDownload } from "./handlers/coexist/attachment-download"
@@ -50,13 +52,8 @@ import { runIntegrationJobWithWebhookContext } from "./job-context"
 import { resolveIncomingTextRouting } from "./routing"
 import { closeChatQueueEvents } from "./utils/message"
 
-async function startIntegrationWorker() {
-  try {
-    await ensureBootstrapped()
-  } catch (err) {
-    logger.error({ err }, "Failed to bootstrap integration worker")
-    process.exit(1)
-  }
+startManagedWorker("integration", async (registerClose) => {
+  await ensureBootstrapped()
 
   const worker = new Worker(
     queueNames.enum.integration,
@@ -314,25 +311,5 @@ async function startIntegrationWorker() {
     }
   })
 
-  let isShuttingDown = false
-  async function shutdown() {
-    if (isShuttingDown) {
-      return
-    }
-    isShuttingDown = true
-    try {
-      await Promise.all([worker.close(), closeChatQueueEvents()])
-      process.exit(0)
-    } catch (err) {
-      logger.error(err, "[IntegrationWorker] Error during shutdown")
-      process.exit(1)
-    }
-  }
-  process.once("SIGINT", shutdown)
-  process.once("SIGTERM", shutdown)
-}
-
-startIntegrationWorker().catch((err) => {
-  logger.error({ err }, "Failed to start integration worker")
-  process.exit(1)
+  registerClose(() => closeWorkerResources(worker, closeChatQueueEvents))
 })

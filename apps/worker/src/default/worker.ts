@@ -10,6 +10,7 @@ import { type Job, Worker } from "bullmq"
 import { isBlockedWorkspace } from "../lib/is-blocked-workspace"
 import { logger } from "../lib/logger"
 import { resolveWorkspaceId } from "../lib/resolve-workspace-id"
+import { startManagedWorker } from "../lib/shutdown"
 import { handleBulkTagContacts } from "./handlers/bulk-tag-contacts"
 import { loopableExportContacts } from "./handlers/export-contacts"
 import { exportCoupons } from "./handlers/export-coupons"
@@ -25,130 +26,117 @@ import { handleSyncTag } from "./handlers/sync-tag"
 const isBlockedJob = async (data: unknown) =>
   isBlockedWorkspace(await resolveWorkspaceId(data))
 
-const worker = new Worker(
-  queueNames.enum.default,
-  async (job: Job<DefaultJobData>) => {
-    logger.info(job.data, `Worker received job: ${job.id}`)
+startManagedWorker("default", (registerClose) => {
+  const worker = new Worker(
+    queueNames.enum.default,
+    async (job: Job<DefaultJobData>) => {
+      logger.info(job.data, `Worker received job: ${job.id}`)
 
-    switch (job.data.type) {
-      case DefaultJobAction.sendAuditLog:
-        await sendAuditLog(job.data.data)
-        return
-      case DefaultJobAction.sendErrorLog:
-        await sendErrorLog(job.data.data)
-        return
-      case DefaultJobAction.exportContacts:
-        if (await isBlockedJob(job.data.data)) {
+      switch (job.data.type) {
+        case DefaultJobAction.sendAuditLog:
+          await sendAuditLog(job.data.data)
           return
-        }
-        await loopableExportContacts(job.data.data)
-        return
-      case DefaultJobAction.exportCoupons:
-        if (await isBlockedJob(job.data.data)) {
+        case DefaultJobAction.sendErrorLog:
+          await sendErrorLog(job.data.data)
           return
-        }
-        await exportCoupons(job.data.data)
-        return
-      case DefaultJobAction.bulkTagContacts:
-        if (await isBlockedJob(job.data.data)) {
+        case DefaultJobAction.exportContacts:
+          if (await isBlockedJob(job.data.data)) {
+            return
+          }
+          await loopableExportContacts(job.data.data)
           return
-        }
-        await handleBulkTagContacts(job.data.data, {
-          attemptsMade: job.attemptsMade,
-        })
-        return
-      case DefaultJobAction.runImport:
-        if (await isBlockedJob(job.data.data)) {
+        case DefaultJobAction.exportCoupons:
+          if (await isBlockedJob(job.data.data)) {
+            return
+          }
+          await exportCoupons(job.data.data)
           return
-        }
-        await runImport(job.data.data)
-        return
-      case DefaultJobAction.syncTag:
-        if (await isBlockedJob(job.data.data)) {
+        case DefaultJobAction.bulkTagContacts:
+          if (await isBlockedJob(job.data.data)) {
+            return
+          }
+          await handleBulkTagContacts(job.data.data, {
+            attemptsMade: job.attemptsMade,
+          })
           return
-        }
-        await handleSyncTag(job.data.data)
-        return
-      case DefaultJobAction.syncChannelLabels:
-        if (await isBlockedJob(job.data.data)) {
+        case DefaultJobAction.runImport:
+          if (await isBlockedJob(job.data.data)) {
+            return
+          }
+          await runImport(job.data.data)
           return
-        }
-        await handleSyncChannelLabels(job.data.data)
-        return
-      case DefaultJobAction.submitMetaCatalogSync:
-        if (await isBlockedJob(job.data.data)) {
+        case DefaultJobAction.syncTag:
+          if (await isBlockedJob(job.data.data)) {
+            return
+          }
+          await handleSyncTag(job.data.data)
           return
-        }
-        await submitMetaCatalogSync(job.data.data)
-        return
-      case DefaultJobAction.importMetaCatalogProducts:
-        if (await isBlockedJob(job.data.data)) {
+        case DefaultJobAction.syncChannelLabels:
+          if (await isBlockedJob(job.data.data)) {
+            return
+          }
+          await handleSyncChannelLabels(job.data.data)
           return
-        }
-        await importMetaCatalogProducts(job.data.data)
-        return
-      case DefaultJobAction.checkMetaCatalogSync:
-        if (await isBlockedJob(job.data.data)) {
+        case DefaultJobAction.submitMetaCatalogSync:
+          if (await isBlockedJob(job.data.data)) {
+            return
+          }
+          await submitMetaCatalogSync(job.data.data)
           return
-        }
-        await checkMetaCatalogSync(job.data.data)
-        return
-      default:
-        logger.warn(`Unknown job name: ${job.name}`)
-        return
+        case DefaultJobAction.importMetaCatalogProducts:
+          if (await isBlockedJob(job.data.data)) {
+            return
+          }
+          await importMetaCatalogProducts(job.data.data)
+          return
+        case DefaultJobAction.checkMetaCatalogSync:
+          if (await isBlockedJob(job.data.data)) {
+            return
+          }
+          await checkMetaCatalogSync(job.data.data)
+          return
+        default:
+          logger.warn(`Unknown job name: ${job.name}`)
+          return
+      }
+    },
+    {
+      connection: getRedisConnection(),
+      ...defaultWorkerOptions,
+    },
+  )
+
+  worker.on("failed", async (job, err) => {
+    if (!job) {
+      return
     }
-  },
-  {
-    connection: getRedisConnection(),
-    ...defaultWorkerOptions,
-  },
-)
+    logger.error(err, `Job ${job.id} has failed`)
+    if (job.data.type === DefaultJobAction.sendErrorLog) {
+      return
+    }
 
-worker.on("failed", async (job, err) => {
-  if (!job) {
-    return
-  }
-  logger.error(err, `Job ${job.id} has failed`)
-  if (job.data.type === DefaultJobAction.sendErrorLog) {
-    return
-  }
+    const workspaceId =
+      "workspaceId" in job.data.data ? job.data.data.workspaceId : undefined
+    if (!workspaceId) {
+      return
+    }
 
-  const workspaceId =
-    "workspaceId" in job.data.data ? job.data.data.workspaceId : undefined
-  if (!workspaceId) {
-    return
-  }
-
-  try {
-    await defaultQueue.add(DefaultJobAction.sendErrorLog, {
-      type: DefaultJobAction.sendErrorLog,
-      data: {
-        workspaceId,
-        error: {
-          message: err.message,
-          stack: err.stack,
-          httpCode: "500",
+    try {
+      await defaultQueue.add(DefaultJobAction.sendErrorLog, {
+        type: DefaultJobAction.sendErrorLog,
+        data: {
+          workspaceId,
+          error: {
+            message: err.message,
+            stack: err.stack,
+            httpCode: "500",
+          },
         },
-      },
-    })
-  } catch (error) {
-    logger.error(error, `Error sending error log for job ${job.id}`)
-  }
-})
+      })
+    } catch (error) {
+      logger.error(error, `Error sending error log for job ${job.id}`)
+    }
+  })
 
-let isShuttingDown = false
-async function shutdown() {
-  if (isShuttingDown) {
-    return
-  }
-  isShuttingDown = true
-  try {
-    await worker.close()
-    process.exit(0)
-  } catch (err) {
-    logger.error(err, "[DefaultWorker] Error during shutdown")
-    process.exit(1)
-  }
-}
-process.once("SIGINT", shutdown)
-process.once("SIGTERM", shutdown)
+  registerClose(() => worker.close())
+})
