@@ -75,6 +75,12 @@ case "${1:-}" in
 
         worker="${2:-standalone}"
         case "$worker" in
+          *[!a-z0-9-]*)
+            print_usage
+            exit 3
+            ;;
+        esac
+        case "$worker" in
           all | standalone | core)
             [ "$worker" != "all" ] || worker="standalone"
             script="$WORKER_DIST_DIR/$worker.mjs"

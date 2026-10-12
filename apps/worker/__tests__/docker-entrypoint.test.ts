@@ -109,6 +109,8 @@ describe("docker-entrypoint worker discovery", () => {
   test("does not interpret worker names as regular expressions", () => {
     expect(run("worker", ".*consumer").status).toBe(3)
     expect(run("worker", ".*").status).toBe(3)
+    expect(run("worker", "sequence\\055consumer").status).toBe(3)
+    expect(run("worker", "tri\\147ger").status).toBe(3)
   })
 
   test.each(["ai-agent", "trigger"])("respects disabled worker %s", (name) => {
