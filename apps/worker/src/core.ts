@@ -1,0 +1,6 @@
+import "./chat/worker"
+import "./default/worker"
+import "./events/worker"
+import "./integration/worker"
+import "./schedule/worker"
+import "./webhook/worker"

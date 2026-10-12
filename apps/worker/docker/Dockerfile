@@ -1,4 +1,4 @@
-FROM node:24-trixie-slim AS base
+FROM node:24.19.0-trixie-slim AS base
 
 ENV PNPM_HOME="/pnpm"
 ENV PATH="$PNPM_HOME:$PATH"
@@ -8,11 +8,12 @@ WORKDIR /app
 
 # Install dependencies only when needed
 FROM base AS pre
-RUN npm install -g turbo@^2
+RUN npm install -g turbo@2.10.4
 
 # Generate a partial monorepo for a target package
 WORKDIR /app
 COPY . .
+RUN node scripts/check-worker-deploy.mjs
 RUN turbo prune worker --docker
 
 FROM base AS deps
@@ -39,4 +40,4 @@ RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
 ENTRYPOINT ["tini", "--", "/usr/local/bin/docker-entrypoint.sh"]
 STOPSIGNAL SIGTERM
-CMD ["worker", "all"]
+CMD ["worker", "standalone"]

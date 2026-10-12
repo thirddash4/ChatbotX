@@ -37,7 +37,13 @@ function run(...args: string[]): { stdout: string; status: number } {
     const stdout = execFileSync("sh", [SCRIPT, ...args], {
       // /bin/echo stub avoids launching node: a resolved `worker <name>` exec
       // simply echoes the script path instead of running it.
-      env: { ...process.env, WORKER_DIST_DIR: distDir, NODE_BIN: "/bin/echo" },
+      env: {
+        ...process.env,
+        WORKER_DIST_DIR: distDir,
+        NODE_BIN: "/bin/echo",
+        WORKER_DISABLE:
+          "ai-agent,sequence-consumer,sequence-producer,sequence-scheduler,trigger",
+      },
       encoding: "utf8",
       stdio: ["ignore", "pipe", "pipe"],
     })
@@ -56,6 +62,8 @@ beforeEach(() => {
   for (const w of STANDARD_WORKERS) {
     touch(join(distDir, w, "worker.mjs"))
   }
+  touch(join(distDir, "standalone.mjs"))
+  touch(join(distDir, "core.mjs"))
   touch(join(distDir, "sequence-scheduler", "worker-producer.mjs"))
   touch(join(distDir, "sequence-scheduler", "worker-consumer.mjs"))
 })
@@ -71,12 +79,24 @@ describe("docker-entrypoint worker discovery", () => {
     expect(stdout.trim()).toBe(join(distDir, "chat", "worker.mjs"))
   })
 
-  test("aliases sequence variants to their historical CLI names", () => {
-    expect(run("worker", "sequence-producer").stdout.trim()).toBe(
-      join(distDir, "sequence-scheduler", "worker-producer.mjs"),
-    )
-    expect(run("worker", "sequence-consumer").stdout.trim()).toBe(
-      join(distDir, "sequence-scheduler", "worker-consumer.mjs"),
+  test.each([
+    "sequence-producer",
+    "sequence-consumer",
+    "sequence-scheduler",
+  ])("never launches Kafka worker %s", (name) => {
+    expect(run("worker", name).status).toBe(3)
+  })
+
+  test.each([
+    undefined,
+    "standalone",
+    "core",
+    "all",
+  ])("selects one consolidated process for %s", (name) => {
+    const result = name ? run("worker", name) : run("worker")
+    expect(result.status).toBe(0)
+    expect(result.stdout.trim()).toBe(
+      join(distDir, name === "core" ? "core.mjs" : "standalone.mjs"),
     )
   })
 
@@ -84,6 +104,17 @@ describe("docker-entrypoint worker discovery", () => {
     const { stdout, status } = run("worker", "foo")
     expect(status).toBe(0)
     expect(stdout.trim()).toBe(join(distDir, "foo", "worker.mjs"))
+  })
+
+  test("does not interpret worker names as regular expressions", () => {
+    expect(run("worker", ".*consumer").status).toBe(3)
+    expect(run("worker", ".*").status).toBe(3)
+    expect(run("worker", "sequence\\055consumer").status).toBe(3)
+    expect(run("worker", "tri\\147ger").status).toBe(3)
+  })
+
+  test.each(["ai-agent", "trigger"])("respects disabled worker %s", (name) => {
+    expect(run("worker", name).status).toBe(3)
   })
 
   test("rejects a worker that was not built (e.g. removed analytics)", () => {
@@ -106,6 +137,6 @@ describe("docker-entrypoint worker discovery", () => {
     mkdirSync(distDir, { recursive: true })
     const { stdout, status } = run("worker", "all")
     expect(status).toBe(4)
-    expect(stdout).toContain("No worker bundles found")
+    expect(stdout).toContain("Worker script not found")
   })
 })
